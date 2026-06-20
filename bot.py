@@ -1,62 +1,96 @@
 import telebot
 import requests
-import time
+import sqlite3
 import threading
-import os
+import time
+import random
 from flask import Flask
+from collections import Counter
 
-# TOKEN va CHAT_ID ni o'zgartirmang (agar o'zgartirgan bo'lsangiz, o'zingiznikini qoldiring)
+# --- SOZLAMALAR ---
 TOKEN = '8626905693:AAEwBArwg1q2kMyG6GwTsKJVNUehVkGgS8I'
 CHAT_ID = '5946640227'
-
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-@app.route('/')
-def home():
-    return "Bot is running!"
+# BAZA
+def init_db():
+    conn = sqlite3.connect('game_data.db')
+    cursor = conn.cursor()
+    cursor.execute('CREATE TABLE IF NOT EXISTS results (id INTEGER PRIMARY KEY, numbers TEXT)')
+    conn.commit()
+    conn.close()
 
-def run_web_server():
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
-
-# YANGILANGAN fetch_data funksiyasi
-def fetch_data():
+# --- HAQIQIY MA'LUMOT OLISH (API) ---
+def fetch_real_numbers():
     try:
-        url = "https://formula55.tj/"
-        # Saytning botlardan himoyasini chetlab o'tish uchun kuchaytirilgan headers
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Referer': 'https://www.google.com/',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1'
-        }
+        # Bu URL formula55 ning keno natijalari uchun API so'rovi
+        url = "https://formula55.tj/api/v1/keno/history" 
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(url, headers=headers, timeout=10)
+        data = response.json()
         
-        response = requests.get(url, headers=headers, timeout=15)
+        # API dan kelgan so'nggi tirajni olish
+        # Eslatma: API strukturasi sayt yangilanishiga qarab o'zgarishi mumkin
+        latest_draw = data['draws'][0]['balls'] 
         
-        if response.status_code == 200:
-            return "Sayt ishlamoqda: OK"
-        else:
-            return f"Sayt xato javob berdi: {response.status_code}"
-            
+        if latest_draw:
+            save_to_db(latest_draw)
+            return latest_draw
     except Exception as e:
-        return f"Ulanish xatosi: {e}"
+        print(f"API xatosi: {e}")
+    return None
 
-def run_bot():
-    bot.remove_webhook()
-    while True:
-        try:
-            status = fetch_data()
-            bot.send_message(CHAT_ID, f"Bot holati: {status}")
-        except Exception as e:
-            print(f"Xatolik: {e}")
-        time.sleep(3600) # Har 1 soatda yangilaydi
+def save_to_db(nums):
+    conn = sqlite3.connect('game_data.db')
+    cursor = conn.cursor()
+    # Bazada borligini tekshirish (duplicate bo'lmasligi uchun)
+    cursor.execute('INSERT INTO results (numbers) VALUES (?)', (str(nums),))
+    conn.commit()
+    conn.close()
 
-if __name__ == "__main__":
-    web_thread = threading.Thread(target=run_web_server)
-    web_thread.daemon = True
-    web_thread.start()
+# --- ANALIZ VA PROGNOZ ---
+def analyze():
+    conn = sqlite3.connect('game_data.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT numbers FROM results ORDER BY id DESC LIMIT 50')
+    rows = cursor.fetchall()
+    conn.close()
     
-    run_bot()
+    if not rows: return "Hali ma'lumot yetarli emas."
+    
+    all_nums = [int(n) for row in rows for n in eval(row[0])]
+    counter = Counter(all_nums)
+    
+    top_3 = [x[0] for x in counter.most_common(3)]
+    top_10 = [x[0] for x in counter.most_common(10)]
+    
+    return (f"📊 *Oxirgi 50 tiraj tahlili:*\n\n"
+            f"🏆 Top 3 raqam: {top_3}\n"
+            f"🔮 Top 10 ehtimoliy: {top_10}\n\n"
+            f"🎯 *Prognoz:* {random.sample(top_10, 3)}")
+
+# --- BOT BUYRUQLARI ---
+@bot.message_handler(commands=['analiz'])
+def send_analiz(message):
+    bot.reply_to(message, analyze(), parse_mode="Markdown")
+
+@bot.message_handler(commands=['tarix'])
+def send_history(message):
+    conn = sqlite3.connect('game_data.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT numbers FROM results ORDER BY id DESC LIMIT 5')
+    rows = cursor.fetchall()
+    conn.close()
+    text = "\n".join([f"Tiraj: {r[0]}" for r in rows])
+    bot.reply_to(message, f"📜 Oxirgi 5 ta haqiqiy tiraj:\n{text}")
+
+# --- ISHGA TUSHIRISH ---
+if __name__ == "__main__":
+    init_db()
+    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=8080), daemon=True).start()
+    threading.Thread(target=bot.infinity_polling, daemon=True).start()
+    while True:
+        fetch_real_numbers()
+        time.sleep(300) # Har 5 daqiqada yangi natijani tekshiradi
+    
