@@ -8,7 +8,7 @@ from flask import Flask
 from collections import Counter
 import random
 
-TOKEN = '8626905693:AAFETRY88hXAY3g8ytn8AyKTnQCmdS89zIA'
+TOKEN = '8626905693:AAFSVu2hJ3UIo4PzwGdxg3qPtkBQTGwSQO8'
 bot = telebot.TeleBot(TOKEN)
 # MUHIM: Telegramdagi eski ulanishlarni o'chirib tashlaydi
 bot.remove_webhook() 
