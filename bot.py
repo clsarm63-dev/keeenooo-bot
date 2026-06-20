@@ -4,16 +4,14 @@ import time
 import threading
 import os
 from flask import Flask
-from bs4 import BeautifulSoup
 
-# TOKEN va CHAT_ID ni o'zgartiring
-TOKEN = '8626905693:AAEwBArwg1q2kMyG6GwTsKJVNUehVkGgS8I'
+# TOKEN va CHAT_ID ni o'zgartirmang (agar o'zgartirgan bo'lsangiz, o'zingiznikini qoldiring)
+TOKEN = '8626905693:AAG1Ecjk-W95hBlgDKo1B844YpUH...'
 CHAT_ID = '5946640227'
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# Render portini ochish uchun
 @app.route('/')
 def home():
     return "Bot is running!"
@@ -22,17 +20,30 @@ def run_web_server():
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
-# Saytdan ma'lumot olish funksiyasi
+# YANGILANGAN fetch_data funksiyasi
 def fetch_data():
     try:
         url = "https://formula55.tj/"
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(url, headers=headers, timeout=10)
-        return "Sayt ishlamoqda" if response.status_code == 200 else f"Xato: {response.status_code}"
+        # Saytning botlardan himoyasini chetlab o'tish uchun kuchaytirilgan headers
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Referer': 'https://www.google.com/',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
+        }
+        
+        response = requests.get(url, headers=headers, timeout=15)
+        
+        if response.status_code == 200:
+            return "Sayt ishlamoqda: OK"
+        else:
+            return f"Sayt xato javob berdi: {response.status_code}"
+            
     except Exception as e:
         return f"Ulanish xatosi: {e}"
 
-# Botni ishga tushirish funksiyasi
 def run_bot():
     bot.remove_webhook()
     while True:
@@ -41,14 +52,11 @@ def run_bot():
             bot.send_message(CHAT_ID, f"Bot holati: {status}")
         except Exception as e:
             print(f"Xatolik: {e}")
-        time.sleep(3600) # Har soatda xabar yuboradi
+        time.sleep(3600) # Har 1 soatda yangilaydi
 
 if __name__ == "__main__":
-    # Veb serverni alohida oqimda (thread) ishga tushirish
     web_thread = threading.Thread(target=run_web_server)
     web_thread.daemon = True
     web_thread.start()
     
-    # Botni asosiy oqimda ishga tushirish
     run_bot()
-  
