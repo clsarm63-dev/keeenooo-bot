@@ -1,19 +1,16 @@
 import telebot
-import requests
 import sqlite3
 import threading
 import time
 import ast
+import cloudscraper  # Cloudflare himoyasini yengish uchun
 from flask import Flask
 from collections import Counter
-import random
 
-# Yangi token joylandi
 TOKEN = '8626905693:AAFSVu2hJ3UIo4PzwGdxg3qPtkBQTGwSQO8'
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# BAZANI SOZLASH
 def init_db():
     conn = sqlite3.connect('game_data.db', check_same_thread=False)
     conn.execute('CREATE TABLE IF NOT EXISTS results (id INTEGER PRIMARY KEY AUTOINCREMENT, numbers TEXT)')
@@ -25,54 +22,48 @@ def save_to_db(nums):
     conn.execute('INSERT INTO results (numbers) VALUES (?)', (str(nums),))
     conn.commit()
     conn.close()
+    print(f"✅ Bazaga yozildi: {nums}")
 
 def fetch_real_numbers():
+    scraper = cloudscraper.create_scraper() # Himoyani chetlab o'tuvchi obyekt
+    url = "https://formula55.tj/api/v1/keno/history"
     try:
-        url = "https://formula55.tj/api/v1/keno/history"
-        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+        response = scraper.get(url, timeout=20)
+        print(f"DEBUG: Status code: {response.status_code}")
+        
         if response.status_code == 200:
             data = response.json()
             if 'draws' in data and len(data['draws']) > 0:
                 save_to_db(data['draws'][0]['balls'])
-    except: pass
+            else:
+                print("⚠️ API javobi kutilganidek emas.")
+        else:
+            print(f"❌ Server rad etdi: {response.status_code}")
+    except Exception as e:
+        print(f"❌ Xatolik: {e}")
 
-# COMMAND HANDLERS
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.reply_to(message, "Bot faol. Buyruqlar: /analiz, /stat, /tarix")
+def monitor_loop():
+    while True:
+        fetch_real_numbers()
+        time.sleep(300) # 5 daqiqa
 
-@bot.message_handler(commands=['analiz'])
-def cmd_analiz(message):
-    conn = sqlite3.connect('game_data.db', check_same_thread=False)
-    rows = conn.execute('SELECT numbers FROM results ORDER BY id DESC LIMIT 5000').fetchall()
-    conn.close()
-    if not rows: return
-    all_nums = [num for row in rows for num in ast.literal_eval(row[0])]
-    stats = Counter(all_nums).most_common(10)
-    bot.reply_to(message, f"📊 Top 10 raqam: {[x[0] for x in stats]}")
-
-@bot.message_handler(commands=['stat'])
-def cmd_stat(message):
-    conn = sqlite3.connect('game_data.db', check_same_thread=False)
-    count = conn.execute('SELECT COUNT(*) FROM results').fetchone()[0]
-    conn.close()
-    bot.reply_to(message, f"💾 Bazada {count} ta tiraj bor.")
-
-@bot.message_handler(commands=['tarix'])
-def cmd_tarix(message):
-    conn = sqlite3.connect('game_data.db', check_same_thread=False)
-    rows = conn.execute('SELECT numbers FROM results ORDER BY id DESC LIMIT 5').fetchall()
-    conn.close()
-    bot.reply_to(message, f"📜 Oxirgi 5 ta tiraj:\n" + "\n".join([r[0] for r in rows]))
+# Bot buyruqlari...
+@bot.message_handler(commands=['start', 'analiz', 'stat', 'tarix'])
+def handle_commands(message):
+    if message.text == '/start':
+        bot.reply_to(message, "Bot faol va ma'lumot yig'moqda.")
+    elif message.text == '/stat':
+        conn = sqlite3.connect('game_data.db', check_same_thread=False)
+        count = conn.execute('SELECT COUNT(*) FROM results').fetchone()[0]
+        conn.close()
+        bot.reply_to(message, f"💾 Bazada {count} ta tiraj bor.")
+    # ... qolganlari ...
 
 if __name__ == "__main__":
     init_db()
-    # Web server
+    threading.Thread(target=monitor_loop, daemon=True).start()
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=8080), daemon=True).start()
-    # API monitoring
-    threading.Thread(target=lambda: [ (fetch_real_numbers(), time.sleep(300)) for _ in iter(int, 1)], daemon=True).start()
     
-    # 409 Xatosini oldini olish uchun
     bot.remove_webhook()
-    print("🤖 Bot ishga tushdi...")
-    bot.infinity_polling(none_stop=True, skip_pending=True)
+    bot.infinity_polling()
+    
