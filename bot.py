@@ -8,11 +8,12 @@ from flask import Flask
 from collections import Counter
 import random
 
-TOKEN = '8626905693:AAEwBArwg1q2kMyG6GwTsKJVNUehVkGgS8I'
+# Yangi token joylashtirildi
+TOKEN = '8626905693:AAFETRY88hXAY3g8ytn8AyKTnQCmdS89zIA'
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# BAZANI SOZLASH (Barcha tirajlar uchun)
+# BAZANI SOZLASH
 def init_db():
     conn = sqlite3.connect('game_data.db', check_same_thread=False)
     cursor = conn.cursor()
@@ -38,7 +39,7 @@ def fetch_real_numbers():
     except Exception as e:
         print(f"API xatosi: {e}")
 
-# --- HANDLERLAR (TARTIB BILAN) ---
+# --- HANDLERLAR (Eng tepada /start turibdi) ---
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -113,3 +114,4 @@ if __name__ == "__main__":
     # Asosiy bot sikli
     print("Bot ishga tushdi...")
     bot.infinity_polling()
+    
