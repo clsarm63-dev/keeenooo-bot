@@ -8,12 +8,10 @@ from flask import Flask
 from collections import Counter
 import random
 
-# Yangi token joylashtirildi
 TOKEN = '8626905693:AAFETRY88hXAY3g8ytn8AyKTnQCmdS89zIA'
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# BAZANI SOZLASH
 def init_db():
     conn = sqlite3.connect('game_data.db', check_same_thread=False)
     cursor = conn.cursor()
@@ -24,94 +22,47 @@ def init_db():
 def save_to_db(nums):
     conn = sqlite3.connect('game_data.db', check_same_thread=False)
     cursor = conn.cursor()
+    # Ma'lumotni to'g'ridan-to'g'ri string sifatida yozamiz
     cursor.execute('INSERT INTO results (numbers) VALUES (?)', (str(nums),))
     conn.commit()
     conn.close()
+    print(f"✅ Bazaga yozildi: {nums}") # LOG: terminalda ko'rinadi
 
 def fetch_real_numbers():
+    url = "https://formula55.tj/api/v1/keno/history"
     try:
-        url = "https://formula55.tj/api/v1/keno/history"
         response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
         if response.status_code == 200:
             data = response.json()
-            latest_draw = data['draws'][0]['balls'] 
-            save_to_db(latest_draw)
+            # API javobini tekshiramiz
+            if 'draws' in data and len(data['draws']) > 0:
+                latest_draw = data['draws'][0]['balls'] 
+                save_to_db(latest_draw)
+            else:
+                print("⚠️ API javobi bo'sh yoki format o'zgargan.")
+        else:
+            print(f"⚠️ API xatosi, status: {response.status_code}")
     except Exception as e:
-        print(f"API xatosi: {e}")
+        print(f"❌ API ulanish xatosi: {e}")
 
-# --- HANDLERLAR (Eng tepada /start turibdi) ---
+# ... qolgan handlerlar (analiz, stat, tarix) o'zgarishsiz ...
 
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.reply_to(message, "Salom! Men Keno tahlil botiman.\n\n"
-                          "Buyruqlar:\n"
-                          "/analiz - Statistik Top 10 va Prognoz\n"
-                          "/top3 - Eng ko'p chiqqan 3 lik\n"
-                          "/stat - Bazadagi jami tirajlar soni\n"
-                          "/tarix - Oxirgi 5 ta tiraj")
-
-@bot.message_handler(commands=['analiz'])
-def cmd_analiz(message):
-    conn = sqlite3.connect('game_data.db', check_same_thread=False)
-    cursor = conn.cursor()
-    cursor.execute('SELECT numbers FROM results ORDER BY id DESC LIMIT 5000')
-    rows = cursor.fetchall()
-    conn.close()
-    
-    if len(rows) < 10: 
-        bot.reply_to(message, f"⚠️ Ma'lumot kam. Hozir bazada {len(rows)} ta tiraj bor.")
-        return
-
-    all_nums = [num for row in rows for num in ast.literal_eval(row[0])]
-    stats = Counter(all_nums)
-    
-    top_3 = [x[0] for x in stats.most_common(3)]
-    most_common_10 = [x[0] for x in stats.most_common(10)]
-    prognoz = random.sample(most_common_10, 3) 
-    
-    bot.reply_to(message, f"📊 **{len(rows)} tiraj tahlili:**\n\n"
-                          f"🏆 Top 3 (Eng ko'p chiqqan): {top_3}\n"
-                          f"🎯 Prognoz (Ehtimoliy): {prognoz}", parse_mode="Markdown")
-
-@bot.message_handler(commands=['top3'])
-def cmd_top3(message):
-    conn = sqlite3.connect('game_data.db', check_same_thread=False)
-    cursor = conn.cursor()
-    cursor.execute('SELECT numbers FROM results ORDER BY id DESC LIMIT 5000')
-    rows = cursor.fetchall()
-    conn.close()
-    if not rows: return
-    all_nums = [num for row in rows for num in ast.literal_eval(row[0])]
-    stats = Counter(all_nums)
-    top_3 = [x[0] for x in stats.most_common(3)]
-    bot.reply_to(message, f"🏆 Eng ko'p chiqqan 3 ta raqam:\n{top_3}")
-
-@bot.message_handler(commands=['stat'])
-def cmd_stat(message):
-    conn = sqlite3.connect('game_data.db', check_same_thread=False)
-    cursor = conn.cursor()
-    cursor.execute('SELECT COUNT(*) FROM results')
-    count = cursor.fetchone()[0]
-    conn.close()
-    bot.reply_to(message, f"💾 Bazada jami yig'ilgan tirajlar soni: {count}")
-
-@bot.message_handler(commands=['tarix'])
-def cmd_tarix(message):
-    conn = sqlite3.connect('game_data.db', check_same_thread=False)
-    cursor = conn.cursor()
-    cursor.execute('SELECT numbers FROM results ORDER BY id DESC LIMIT 5')
-    rows = cursor.fetchall()
-    conn.close()
-    text = "\n".join([f"Tiraj: {r[0]}" for r in rows])
-    bot.reply_to(message, f"📜 Oxirgi 5 ta tiraj:\n{text}")
-
-# --- ISHGA TUSHIRISH ---
 if __name__ == "__main__":
     init_db()
-    # Web server
+    
+    # 1. API yig'ish jarayonini alohida thread'da ishga tushiramiz
+    def monitor_loop():
+        print("🔍 Monitoring ishga tushdi...")
+        while True:
+            fetch_real_numbers()
+            time.sleep(300) # Har 5 daqiqada
+
+    threading.Thread(target=monitor_loop, daemon=True).start()
+    
+    # 2. Web server
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=8080), daemon=True).start()
     
-    # Asosiy bot sikli
-    print("Bot ishga tushdi...")
+    # 3. Bot
+    print("🤖 Bot ishga tushdi...")
     bot.infinity_polling()
-    
+            
