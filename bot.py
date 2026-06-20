@@ -1,3 +1,4 @@
+
 import telebot
 import requests
 import sqlite3
@@ -7,13 +8,14 @@ import random
 from flask import Flask
 from collections import Counter
 
-# --- SOZLAMALAR ---
+# Siz bergan yangi token
 TOKEN = '8626905693:AAEwBArwg1q2kMyG6GwTsKJVNUehVkGgS8I'
 CHAT_ID = '5946640227'
+
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# BAZA
+# BAZANI TAYYORLASH
 def init_db():
     conn = sqlite3.connect('game_data.db')
     cursor = conn.cursor()
@@ -21,35 +23,15 @@ def init_db():
     conn.commit()
     conn.close()
 
-# --- HAQIQIY MA'LUMOT OLISH (API) ---
-def fetch_real_numbers():
-    try:
-        # Bu URL formula55 ning keno natijalari uchun API so'rovi
-        url = "https://formula55.tj/api/v1/keno/history" 
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(url, headers=headers, timeout=10)
-        data = response.json()
-        
-        # API dan kelgan so'nggi tirajni olish
-        # Eslatma: API strukturasi sayt yangilanishiga qarab o'zgarishi mumkin
-        latest_draw = data['draws'][0]['balls'] 
-        
-        if latest_draw:
-            save_to_db(latest_draw)
-            return latest_draw
-    except Exception as e:
-        print(f"API xatosi: {e}")
-    return None
-
+# MA'LUMOT SAQLASH
 def save_to_db(nums):
     conn = sqlite3.connect('game_data.db')
     cursor = conn.cursor()
-    # Bazada borligini tekshirish (duplicate bo'lmasligi uchun)
     cursor.execute('INSERT INTO results (numbers) VALUES (?)', (str(nums),))
     conn.commit()
     conn.close()
 
-# --- ANALIZ VA PROGNOZ ---
+# ANALIZ VA PROGNOZ
 def analyze():
     conn = sqlite3.connect('game_data.db')
     cursor = conn.cursor()
@@ -57,7 +39,7 @@ def analyze():
     rows = cursor.fetchall()
     conn.close()
     
-    if not rows: return "Hali ma'lumot yetarli emas."
+    if not rows: return "⚠️ Hali ma'lumot yetarli emas."
     
     all_nums = [int(n) for row in rows for n in eval(row[0])]
     counter = Counter(all_nums)
@@ -70,7 +52,11 @@ def analyze():
             f"🔮 Top 10 ehtimoliy: {top_10}\n\n"
             f"🎯 *Prognoz:* {random.sample(top_10, 3)}")
 
-# --- BOT BUYRUQLARI ---
+# BOT BUYRUQLARI
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    bot.reply_to(message, "Salom! Men Keno tahlil botiman. /analiz yoki /tarix buyruqlaridan foydalaning.")
+
 @bot.message_handler(commands=['analiz'])
 def send_analiz(message):
     bot.reply_to(message, analyze(), parse_mode="Markdown")
@@ -83,14 +69,15 @@ def send_history(message):
     rows = cursor.fetchall()
     conn.close()
     text = "\n".join([f"Tiraj: {r[0]}" for r in rows])
-    bot.reply_to(message, f"📜 Oxirgi 5 ta haqiqiy tiraj:\n{text}")
+    bot.reply_to(message, f"📜 Oxirgi 5 ta tiraj:\n{text}")
 
-# --- ISHGA TUSHIRISH ---
+# ISHGA TUSHIRISH
 if __name__ == "__main__":
     init_db()
+    # Web server
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=8080), daemon=True).start()
+    # Bot polling
     threading.Thread(target=bot.infinity_polling, daemon=True).start()
+    print("Bot muvaffaqiyatli ishga tushdi!")
     while True:
-        fetch_real_numbers()
-        time.sleep(300) # Har 5 daqiqada yangi natijani tekshiradi
-    
+        time.sleep(3600)
