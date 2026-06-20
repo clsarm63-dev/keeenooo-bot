@@ -12,11 +12,10 @@ TOKEN = '8626905693:AAEwBArwg1q2kMyG6GwTsKJVNUehVkGgS8I'
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# BAZANI SOZLASH
+# BAZANI SOZLASH (Barcha tirajlar uchun)
 def init_db():
     conn = sqlite3.connect('game_data.db', check_same_thread=False)
     cursor = conn.cursor()
-    # Tirajlar cheksiz yig'iladi, takrorlansa ham yoziladi
     cursor.execute('CREATE TABLE IF NOT EXISTS results (id INTEGER PRIMARY KEY AUTOINCREMENT, numbers TEXT)')
     conn.commit()
     conn.close()
@@ -39,12 +38,21 @@ def fetch_real_numbers():
     except Exception as e:
         print(f"API xatosi: {e}")
 
-# ANALIZ: 5000 TIRAJ BO'YICHA
+# --- HANDLERLAR (TARTIB BILAN) ---
+
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    bot.reply_to(message, "Salom! Men Keno tahlil botiman.\n\n"
+                          "Buyruqlar:\n"
+                          "/analiz - Statistik Top 10 va Prognoz\n"
+                          "/top3 - Eng ko'p chiqqan 3 lik\n"
+                          "/stat - Bazadagi jami tirajlar soni\n"
+                          "/tarix - Oxirgi 5 ta tiraj")
+
 @bot.message_handler(commands=['analiz'])
 def cmd_analiz(message):
     conn = sqlite3.connect('game_data.db', check_same_thread=False)
     cursor = conn.cursor()
-    # Bazadan eng oxirgi 5000 ta tirajni olish
     cursor.execute('SELECT numbers FROM results ORDER BY id DESC LIMIT 5000')
     rows = cursor.fetchall()
     conn.close()
@@ -63,6 +71,19 @@ def cmd_analiz(message):
     bot.reply_to(message, f"📊 **{len(rows)} tiraj tahlili:**\n\n"
                           f"🏆 Top 3 (Eng ko'p chiqqan): {top_3}\n"
                           f"🎯 Prognoz (Ehtimoliy): {prognoz}", parse_mode="Markdown")
+
+@bot.message_handler(commands=['top3'])
+def cmd_top3(message):
+    conn = sqlite3.connect('game_data.db', check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute('SELECT numbers FROM results ORDER BY id DESC LIMIT 5000')
+    rows = cursor.fetchall()
+    conn.close()
+    if not rows: return
+    all_nums = [num for row in rows for num in ast.literal_eval(row[0])]
+    stats = Counter(all_nums)
+    top_3 = [x[0] for x in stats.most_common(3)]
+    bot.reply_to(message, f"🏆 Eng ko'p chiqqan 3 ta raqam:\n{top_3}")
 
 @bot.message_handler(commands=['stat'])
 def cmd_stat(message):
@@ -83,12 +104,12 @@ def cmd_tarix(message):
     text = "\n".join([f"Tiraj: {r[0]}" for r in rows])
     bot.reply_to(message, f"📜 Oxirgi 5 ta tiraj:\n{text}")
 
+# --- ISHGA TUSHIRISH ---
 if __name__ == "__main__":
     init_db()
+    # Web server
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=8080), daemon=True).start()
-    threading.Thread(target=bot.infinity_polling, daemon=True).start()
     
-    while True:
-        fetch_real_numbers()
-        time.sleep(300) 
-    
+    # Asosiy bot sikli
+    print("Bot ishga tushdi...")
+    bot.infinity_polling()
