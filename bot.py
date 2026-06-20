@@ -7,7 +7,7 @@ from flask import Flask
 from bs4 import BeautifulSoup
 
 # TOKEN va CHAT_ID ni o'zgartiring
-TOKEN = '8626905693:AAG8SvIClJ3hIk5SNYTqC6S3jPCebdlZjNw...'
+TOKEN = '8626905693:AAEwBArwg1q2kMyG6GwTsKJVNUehVkGgS8I'
 CHAT_ID = '5946640227'
 
 bot = telebot.TeleBot(TOKEN)
