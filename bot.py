@@ -6,7 +6,7 @@ import os
 from flask import Flask
 
 # TOKEN va CHAT_ID ni o'zgartirmang (agar o'zgartirgan bo'lsangiz, o'zingiznikini qoldiring)
-TOKEN = '8626905693:AAG1Ecjk-W95hBlgDKo1B844YpUH...'
+TOKEN = '8626905693:AAEwBArwg1q2kMyG6GwTsKJVNUehVkGgS8I'
 CHAT_ID = '5946640227'
 
 bot = telebot.TeleBot(TOKEN)
